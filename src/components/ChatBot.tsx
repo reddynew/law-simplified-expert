@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Plus, Minus, Check, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -73,7 +72,6 @@ const INITIAL_STEPS: ChatStep[] = [
       'Criminal Law': 'criminal-q1'
     }
   },
-  // Family Law Questions
   {
     id: 'family-q1',
     type: 'option',
@@ -93,7 +91,6 @@ const INITIAL_STEPS: ChatStep[] = [
     content: 'Have you previously consulted any other lawyer regarding this matter?',
     nextStep: 'consent'
   },
-  // Corporate Law Questions
   {
     id: 'corporate-q1',
     type: 'option',
@@ -113,7 +110,6 @@ const INITIAL_STEPS: ChatStep[] = [
     content: 'What is the approximate size of your business (number of employees)?',
     nextStep: 'consent'
   },
-  // Labour Law Questions
   {
     id: 'labour-q1',
     type: 'option',
@@ -133,7 +129,6 @@ const INITIAL_STEPS: ChatStep[] = [
     content: 'Have you filed any formal complaints with HR or other authorities?',
     nextStep: 'consent'
   },
-  // Criminal Law Questions
   {
     id: 'criminal-q1',
     type: 'option',
@@ -153,7 +148,6 @@ const INITIAL_STEPS: ChatStep[] = [
     content: 'What is the current status of your case?',
     nextStep: 'consent'
   },
-  // Consent and Thank You
   {
     id: 'consent',
     type: 'message',
@@ -178,14 +172,12 @@ const ChatBot = () => {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Handle scrolling to bottom on new messages
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatHistory]);
 
-  // Initialize chat when opened
   useEffect(() => {
     if (isOpen && chatHistory.length === 0) {
       const introStep = INITIAL_STEPS.find(step => step.id === 'intro');
@@ -207,33 +199,20 @@ const ChatBot = () => {
   };
 
   const handleUserResponse = (response: string, stepId: string) => {
-    // Add user response to chat history
     setChatHistory(prev => [...prev, { role: 'user', content: response }]);
-    
-    // Store response
     setUserResponses(prev => ({...prev, [stepId]: response }));
-    
-    // Find current step
     const currentStep = findStepById(stepId);
     if (!currentStep || !currentStep.nextStep) return;
-    
-    // Determine next step
     let nextStepId: string;
     if (typeof currentStep.nextStep === 'string') {
       nextStepId = currentStep.nextStep;
     } else {
       nextStepId = currentStep.nextStep[response] || Object.values(currentStep.nextStep)[0];
     }
-    
-    // Get next step
     const nextStep = findStepById(nextStepId);
     if (!nextStep) return;
-    
-    // Add bot's next question to chat history after a delay
     setTimeout(() => {
       setChatHistory(prev => [...prev, { role: 'bot', content: nextStep.content, id: nextStep.id }]);
-      
-      // Check if chat is complete
       if (nextStep.type === 'thank-you') {
         setIsChatComplete(true);
       }
@@ -243,12 +222,10 @@ const ChatBot = () => {
   const handleTextInput = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim()) return;
-    
     const currentStepObj = findStepById(currentStep);
     if (currentStepObj) {
       handleUserResponse(userInput, currentStep);
       setUserInput('');
-      
       if (typeof currentStepObj.nextStep === 'string') {
         setCurrentStep(currentStepObj.nextStep);
       }
@@ -257,7 +234,6 @@ const ChatBot = () => {
 
   const handleOptionSelect = (option: string, stepId: string) => {
     handleUserResponse(option, stepId);
-    
     const currentStepObj = findStepById(stepId);
     if (currentStepObj && typeof currentStepObj.nextStep === 'object') {
       setCurrentStep(currentStepObj.nextStep[option] || Object.values(currentStepObj.nextStep)[0]);
@@ -269,6 +245,9 @@ const ChatBot = () => {
       setIsMinimized(false);
     } else {
       setIsOpen(!isOpen);
+      if (isOpen) {
+        resetChat();
+      }
     }
   };
 
@@ -279,13 +258,15 @@ const ChatBot = () => {
   const closeChat = () => {
     setIsOpen(false);
     setIsMinimized(false);
-    // Reset chat if needed
-    if (isChatComplete) {
-      setChatHistory([]);
-      setUserResponses({});
-      setCurrentStep('intro');
-      setIsChatComplete(false);
-    }
+    resetChat();
+  };
+
+  const resetChat = () => {
+    setChatHistory([]);
+    setUserResponses({});
+    setCurrentStep('intro');
+    setIsChatComplete(false);
+    setUserInput('');
   };
 
   const renderInputForStep = (step: ChatStep) => {
@@ -366,7 +347,6 @@ const ChatBot = () => {
 
   return (
     <>
-      {/* Chat Button */}
       <button
         className={cn(
           "fixed z-40 shadow-lg base-transition flex items-center justify-center",
@@ -380,7 +360,6 @@ const ChatBot = () => {
         {isMinimized ? <Plus size={24} /> : <MessageCircle size={24} />}
       </button>
       
-      {/* FAQ Button */}
       <button
         className="fixed z-40 bottom-6 left-6 h-14 w-14 rounded-full bg-legal-DEFAULT text-white shadow-lg hover:bg-legal-accent base-transition flex items-center justify-center"
         onClick={() => document.getElementById('faq-section')?.scrollIntoView({ behavior: 'smooth' })}
@@ -393,14 +372,12 @@ const ChatBot = () => {
         </svg>
       </button>
       
-      {/* Chat Window */}
       <div 
         className={cn(
           "fixed z-50 bottom-24 right-6 w-full max-w-sm bg-white rounded-lg shadow-xl border border-legal-border overflow-hidden base-transition",
           isOpen && !isMinimized ? "animate-fade-in" : "hidden"
         )}
       >
-        {/* Chat Header */}
         <div className="flex justify-between items-center p-4 bg-legal-DEFAULT text-white">
           <h3 className="font-semibold">Law Suvidha Chat</h3>
           <div className="flex items-center space-x-2">
@@ -421,7 +398,6 @@ const ChatBot = () => {
           </div>
         </div>
         
-        {/* Chat Messages */}
         <div className="p-4 h-80 overflow-y-auto bg-legal-light">
           {chatHistory.map((message, idx) => (
             <div
@@ -439,7 +415,6 @@ const ChatBot = () => {
           <div ref={chatEndRef} />
         </div>
         
-        {/* Chat Input Area */}
         <div className="p-4 border-t border-legal-border">
           {chatHistory.length > 0 && (
             renderInputForStep(
