@@ -157,7 +157,7 @@ const INITIAL_STEPS: ChatStep[] = [
   {
     id: 'consent',
     type: 'message',
-    content: 'Thank you for providing this information. Do you consent to Law Suvidha storing the information you've shared for the purpose of addressing your legal query?',
+    content: "Thank you for providing this information. Do you consent to Law Suvidha storing the information you've shared for the purpose of addressing your legal query?",
     nextStep: 'thank-you'
   },
   {
