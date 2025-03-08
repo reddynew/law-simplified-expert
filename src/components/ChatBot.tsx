@@ -22,7 +22,7 @@ const INITIAL_STEPS: ChatStep[] = [
   {
     id: 'intro',
     type: 'message',
-    content: 'Hello, welcome to Law Suvidha. I'm here to help you with your legal queries. To get started, I'll need some information from you.',
+    content: "Hello, welcome to Law Suvidha. I'm here to help you with your legal queries. To get started, I'll need some information from you.",
     nextStep: 'name'
   },
   {
