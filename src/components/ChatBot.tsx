@@ -1,431 +1,370 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Plus, Minus, Check, ChevronRight } from 'lucide-react';
+import { X, Plus, Send, MessageSquare } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
 
-type ChatStep = {
-  id: string;
-  type: 'question' | 'option' | 'input' | 'message' | 'thank-you';
-  content: string;
+interface Message {
+  type: 'user' | 'bot';
+  text: string;
   options?: string[];
-  inputType?: 'text' | 'email' | 'tel';
-  placeholder?: string;
-  isRequired?: boolean;
-  nextStep?: string | { [key: string]: string };
-};
+}
 
-type UserResponse = {
-  [key: string]: string;
-};
-
-const INITIAL_STEPS: ChatStep[] = [
-  {
-    id: 'intro',
-    type: 'message',
-    content: "Hello, welcome to Law Suvidha. I'm here to help you with your legal queries. To get started, I'll need some information from you.",
-    nextStep: 'name'
-  },
-  {
-    id: 'name',
-    type: 'input',
-    inputType: 'text',
-    content: 'What is your name?',
-    placeholder: 'Enter your full name',
-    isRequired: true,
-    nextStep: 'contact'
-  },
-  {
-    id: 'contact',
-    type: 'input',
-    inputType: 'tel',
-    content: 'What is your contact number?',
-    placeholder: 'Enter your phone number',
-    isRequired: true,
-    nextStep: 'email'
-  },
-  {
-    id: 'email',
-    type: 'input',
-    inputType: 'email',
-    content: 'What is your email address?',
-    placeholder: 'Enter your email',
-    isRequired: true,
-    nextStep: 'location'
-  },
-  {
-    id: 'location',
-    type: 'input',
-    inputType: 'text',
-    content: 'Where are you located?',
-    placeholder: 'Enter your city',
-    isRequired: true,
-    nextStep: 'case-type'
-  },
-  {
-    id: 'case-type',
-    type: 'option',
-    content: 'What type of legal assistance do you need?',
-    options: ['Family Law', 'Corporate Law', 'Labour Law', 'Criminal Law'],
-    nextStep: {
-      'Family Law': 'family-q1',
-      'Corporate Law': 'corporate-q1',
-      'Labour Law': 'labour-q1',
-      'Criminal Law': 'criminal-q1'
-    }
-  },
-  {
-    id: 'family-q1',
-    type: 'option',
-    content: 'What aspect of Family Law do you need help with?',
-    options: ['Divorce', 'Child Custody', 'Alimony', 'Property Distribution', 'Other'],
-    nextStep: 'family-q2'
-  },
-  {
-    id: 'family-q2',
-    type: 'question',
-    content: 'How long has this issue been ongoing?',
-    nextStep: 'family-q3'
-  },
-  {
-    id: 'family-q3',
-    type: 'question',
-    content: 'Have you previously consulted any other lawyer regarding this matter?',
-    nextStep: 'consent'
-  },
-  {
-    id: 'corporate-q1',
-    type: 'option',
-    content: 'What area of Corporate Law are you interested in?',
-    options: ['Business Formation', 'Contracts', 'Intellectual Property', 'Compliance', 'Dispute Resolution', 'Other'],
-    nextStep: 'corporate-q2'
-  },
-  {
-    id: 'corporate-q2',
-    type: 'question',
-    content: 'Is this for an existing business or a new venture?',
-    nextStep: 'corporate-q3'
-  },
-  {
-    id: 'corporate-q3',
-    type: 'question',
-    content: 'What is the approximate size of your business (number of employees)?',
-    nextStep: 'consent'
-  },
-  {
-    id: 'labour-q1',
-    type: 'option',
-    content: 'What specific Labour Law issue do you need assistance with?',
-    options: ['Wrongful Termination', 'Workplace Discrimination', 'Wage Disputes', 'Workers Compensation', 'Other'],
-    nextStep: 'labour-q2'
-  },
-  {
-    id: 'labour-q2',
-    type: 'question',
-    content: 'When did this incident or issue occur?',
-    nextStep: 'labour-q3'
-  },
-  {
-    id: 'labour-q3',
-    type: 'question',
-    content: 'Have you filed any formal complaints with HR or other authorities?',
-    nextStep: 'consent'
-  },
-  {
-    id: 'criminal-q1',
-    type: 'option',
-    content: 'What type of Criminal Law matter do you need help with?',
-    options: ['Criminal Defense', 'Bail Application', 'Appeals', 'Other'],
-    nextStep: 'criminal-q2'
-  },
-  {
-    id: 'criminal-q2',
-    type: 'question',
-    content: 'Has a case been registered or any legal proceedings started?',
-    nextStep: 'criminal-q3'
-  },
-  {
-    id: 'criminal-q3',
-    type: 'question',
-    content: 'What is the current status of your case?',
-    nextStep: 'consent'
-  },
-  {
-    id: 'consent',
-    type: 'message',
-    content: "Thank you for providing this information. Do you consent to Law Suvidha storing the information you've shared for the purpose of addressing your legal query?",
-    nextStep: 'thank-you'
-  },
-  {
-    id: 'thank-you',
-    type: 'thank-you',
-    content: 'Thank you for reaching out to Law Suvidha. One of our legal experts will review your information and contact you within 24 hours. We look forward to assisting you with your legal matter.'
-  }
-];
+type ChatStage = 
+  | 'initial' 
+  | 'name' 
+  | 'contact' 
+  | 'location' 
+  | 'caseType' 
+  | 'questions' 
+  | 'consent' 
+  | 'end';
 
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [chatHistory, setChatHistory] = useState<{role: 'bot' | 'user', content: string, id?: string}[]>([]);
-  const [currentStep, setCurrentStep] = useState<string>('intro');
+  const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
-  const [userResponses, setUserResponses] = useState<UserResponse>({});
-  const [isChatComplete, setIsChatComplete] = useState(false);
-  
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [stage, setStage] = useState<ChatStage>('initial');
+  const [userData, setUserData] = useState({
+    name: '',
+    contact: '',
+    location: '',
+    caseType: '',
+    answers: {}
+  });
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
+  // Case type specific questions
+  const caseTypeQuestions: Record<string, string[]> = {
+    'Family Law': [
+      "Are you seeking a divorce or separation?",
+      "Are there children involved in your case?",
+      "Is there any property or assets to be divided?",
+      "Have you tried mediation or counseling?",
+    ],
+    'Corporate Law': [
+      "What is the nature of your business?",
+      "Is this related to contract negotiation or review?",
+      "Are you dealing with intellectual property issues?",
+      "Is this regarding employment or labor disputes?",
+    ],
+    'Criminal Law': [
+      "What charges are you facing?",
+      "Have you been arrested?",
+      "Do you have a court date scheduled?",
+      "Have you been questioned by the police?",
+    ],
+    'Labour Law': [
+      "Are you an employer or employee?",
+      "Is this regarding termination or layoffs?",
+      "Are you dealing with workplace discrimination?",
+      "Is this related to compensation or benefits?",
+    ]
+  };
+
+  // Initialize chat
   useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (isOpen && messages.length === 0) {
+      setMessages([
+        {
+          type: 'bot',
+          text: "Hello! Welcome to Law Suvidha. I'm here to assist you with your legal questions. To get started, may I know your name?"
+        }
+      ]);
+      setStage('name');
     }
-  }, [chatHistory]);
+  }, [isOpen, messages.length]);
 
+  // Scroll to bottom when messages change
   useEffect(() => {
-    if (isOpen && chatHistory.length === 0) {
-      const introStep = INITIAL_STEPS.find(step => step.id === 'intro');
-      if (introStep) {
-        setChatHistory([{ role: 'bot', content: introStep.content, id: introStep.id }]);
-        const nextStepId = introStep.nextStep as string;
-        setTimeout(() => {
-          const nextStep = INITIAL_STEPS.find(step => step.id === nextStepId);
-          if (nextStep) {
-            setChatHistory(prev => [...prev, { role: 'bot', content: nextStep.content, id: nextStep.id }]);
-          }
-        }, 1000);
-      }
-    }
-  }, [isOpen]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  const findStepById = (id: string): ChatStep | undefined => {
-    return INITIAL_STEPS.find(step => step.id === id);
+  const handleOpen = () => {
+    setIsOpen(true);
+    setIsMinimized(false);
   };
 
-  const handleUserResponse = (response: string, stepId: string) => {
-    setChatHistory(prev => [...prev, { role: 'user', content: response }]);
-    setUserResponses(prev => ({...prev, [stepId]: response }));
-    const currentStep = findStepById(stepId);
-    if (!currentStep || !currentStep.nextStep) return;
-    let nextStepId: string;
-    if (typeof currentStep.nextStep === 'string') {
-      nextStepId = currentStep.nextStep;
-    } else {
-      nextStepId = currentStep.nextStep[response] || Object.values(currentStep.nextStep)[0];
-    }
-    const nextStep = findStepById(nextStepId);
-    if (!nextStep) return;
-    setTimeout(() => {
-      setChatHistory(prev => [...prev, { role: 'bot', content: nextStep.content, id: nextStep.id }]);
-      if (nextStep.type === 'thank-you') {
-        setIsChatComplete(true);
-      }
-    }, 800);
-  };
-
-  const handleTextInput = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim()) return;
-    const currentStepObj = findStepById(currentStep);
-    if (currentStepObj) {
-      handleUserResponse(userInput, currentStep);
-      setUserInput('');
-      if (typeof currentStepObj.nextStep === 'string') {
-        setCurrentStep(currentStepObj.nextStep);
-      }
-    }
-  };
-
-  const handleOptionSelect = (option: string, stepId: string) => {
-    handleUserResponse(option, stepId);
-    const currentStepObj = findStepById(stepId);
-    if (currentStepObj && typeof currentStepObj.nextStep === 'object') {
-      setCurrentStep(currentStepObj.nextStep[option] || Object.values(currentStepObj.nextStep)[0]);
-    }
-  };
-
-  const toggleChat = () => {
-    if (isMinimized) {
-      setIsMinimized(false);
-    } else {
-      setIsOpen(!isOpen);
-      if (isOpen) {
-        resetChat();
-      }
-    }
-  };
-
-  const minimizeChat = () => {
-    setIsMinimized(true);
-  };
-
-  const closeChat = () => {
+  const handleClose = () => {
     setIsOpen(false);
     setIsMinimized(false);
-    resetChat();
+    // Reset chat state
+    setMessages([]);
+    setStage('initial');
+    setUserData({
+      name: '',
+      contact: '',
+      location: '',
+      caseType: '',
+      answers: {}
+    });
+    setCurrentQuestionIndex(0);
   };
 
-  const resetChat = () => {
-    setChatHistory([]);
-    setUserResponses({});
-    setCurrentStep('intro');
-    setIsChatComplete(false);
+  const handleMinimize = () => {
+    setIsMinimized(!isMinimized);
+  };
+
+  const handleSend = () => {
+    if (!userInput.trim()) return;
+
+    const newUserMessage: Message = {
+      type: 'user',
+      text: userInput
+    };
+
+    setMessages(prev => [...prev, newUserMessage]);
+    processUserInput(userInput);
     setUserInput('');
   };
 
-  const renderInputForStep = (step: ChatStep) => {
-    if (step.type === 'input') {
-      return (
-        <form onSubmit={handleTextInput} className="mt-4 flex">
-          <input
-            type={step.inputType || 'text'}
-            className="input-field"
-            placeholder={step.placeholder}
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            required={step.isRequired}
-          />
-          <button 
-            type="submit" 
-            className="ml-2 bg-legal-DEFAULT text-white p-2 rounded-md hover:bg-legal-accent base-transition"
-            aria-label="Send"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </form>
-      );
+  const handleOptionSelect = (option: string) => {
+    const newUserMessage: Message = {
+      type: 'user',
+      text: option
+    };
+
+    setMessages(prev => [...prev, newUserMessage]);
+    processUserInput(option);
+  };
+
+  const processUserInput = (input: string) => {
+    switch (stage) {
+      case 'name':
+        setUserData(prev => ({ ...prev, name: input }));
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            type: 'bot',
+            text: `Nice to meet you, ${input}! Could you please share your contact number?`
+          }]);
+          setStage('contact');
+        }, 500);
+        break;
+
+      case 'contact':
+        setUserData(prev => ({ ...prev, contact: input }));
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            type: 'bot',
+            text: "Thank you. What is your location or city?"
+          }]);
+          setStage('location');
+        }, 500);
+        break;
+
+      case 'location':
+        setUserData(prev => ({ ...prev, location: input }));
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            type: 'bot',
+            text: "Thank you for providing your details. What type of legal assistance do you need?",
+            options: ['Family Law', 'Corporate Law', 'Criminal Law', 'Labour Law']
+          }]);
+          setStage('caseType');
+        }, 500);
+        break;
+
+      case 'caseType':
+        setUserData(prev => ({ ...prev, caseType: input }));
+        setCurrentQuestionIndex(0);
+        setTimeout(() => {
+          if (caseTypeQuestions[input] && caseTypeQuestions[input].length > 0) {
+            setMessages(prev => [...prev, {
+              type: 'bot',
+              text: caseTypeQuestions[input][0]
+            }]);
+            setStage('questions');
+          } else {
+            // If no questions for this case type
+            setMessages(prev => [...prev, {
+              type: 'bot',
+              text: "Do you consent to Law Suvidha storing your information to better assist you?",
+              options: ['Yes, I consent', 'No, I do not consent']
+            }]);
+            setStage('consent');
+          }
+        }, 500);
+        break;
+
+      case 'questions':
+        // Store answer to current question
+        setUserData(prev => ({
+          ...prev,
+          answers: {
+            ...prev.answers,
+            [caseTypeQuestions[userData.caseType][currentQuestionIndex]]: input
+          }
+        }));
+
+        // Move to next question or to consent stage
+        const nextIndex = currentQuestionIndex + 1;
+        if (userData.caseType && caseTypeQuestions[userData.caseType] && nextIndex < caseTypeQuestions[userData.caseType].length) {
+          setCurrentQuestionIndex(nextIndex);
+          setTimeout(() => {
+            setMessages(prev => [...prev, {
+              type: 'bot',
+              text: caseTypeQuestions[userData.caseType][nextIndex]
+            }]);
+          }, 500);
+        } else {
+          setTimeout(() => {
+            setMessages(prev => [...prev, {
+              type: 'bot',
+              text: "Thank you for providing those details. Do you consent to Law Suvidha storing your information to better assist you?",
+              options: ['Yes, I consent', 'No, I do not consent']
+            }]);
+            setStage('consent');
+          }, 500);
+        }
+        break;
+
+      case 'consent':
+        const consented = input.toLowerCase().includes('yes');
+        setTimeout(() => {
+          if (consented) {
+            setMessages(prev => [...prev, {
+              type: 'bot',
+              text: `Thank you, ${userData.name}! Our legal team will review your information and contact you soon at ${userData.contact}. Please click the "Thank You" button below to complete this conversation.`,
+              options: ['Thank You']
+            }]);
+          } else {
+            setMessages(prev => [...prev, {
+              type: 'bot',
+              text: `We understand your privacy concerns, ${userData.name}. Your information will not be stored. Our legal team can still assist you if you contact us directly. Please click the "Thank You" button below to complete this conversation.`,
+              options: ['Thank You']
+            }]);
+          }
+          setStage('end');
+        }, 500);
+        break;
+
+      case 'end':
+        toast({
+          title: "Chat completed",
+          description: "Thank you for contacting Law Suvidha!",
+          duration: 3000,
+        });
+        handleClose();
+        break;
+
+      default:
+        break;
     }
-    
-    if (step.type === 'option' && step.options) {
-      return (
-        <div className="mt-4 space-y-2">
-          {step.options.map((option, idx) => (
-            <button
-              key={idx}
-              className="w-full py-2 px-4 bg-white text-legal-DEFAULT border border-legal-border rounded-md hover:bg-legal-light hover:border-legal-accent base-transition text-left"
-              onClick={() => handleOptionSelect(option, step.id)}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      );
-    }
-    
-    if (step.type === 'question') {
-      return (
-        <form onSubmit={handleTextInput} className="mt-4 flex">
-          <input
-            type="text"
-            className="input-field"
-            placeholder="Type your answer..."
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            required
-          />
-          <button 
-            type="submit" 
-            className="ml-2 bg-legal-DEFAULT text-white p-2 rounded-md hover:bg-legal-accent base-transition"
-            aria-label="Send"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </form>
-      );
-    }
-    
-    if (step.type === 'thank-you') {
-      return (
-        <button
-          className="mt-4 w-full py-2 px-4 bg-legal-DEFAULT text-white rounded-md hover:bg-legal-accent base-transition flex items-center justify-center"
-          onClick={closeChat}
-        >
-          <Check size={18} className="mr-2" />
-          Close Chat
-        </button>
-      );
-    }
-    
-    return null;
   };
 
   return (
-    <>
-      <button
-        className={cn(
-          "fixed z-40 shadow-lg base-transition flex items-center justify-center",
+    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end">
+      {/* Chat button */}
+      {!isOpen && (
+        <Button 
+          onClick={handleOpen}
+          className="bg-[#403E43] text-white shadow-lg h-12 w-12 rounded-full p-0 flex items-center justify-center"
+        >
+          <MessageSquare className="h-5 w-5 text-white" />
+        </Button>
+      )}
+
+      {/* Chat window */}
+      {isOpen && (
+        <div className={cn(
+          "bg-white rounded-lg shadow-xl border border-gray-200 transition-all duration-300",
           isMinimized 
-            ? "bottom-6 right-6 h-12 w-12 rounded-full bg-legal-DEFAULT text-white" 
-            : "bottom-6 right-6 h-14 w-14 rounded-full bg-legal-DEFAULT text-white hover:bg-legal-accent"
-        )}
-        onClick={toggleChat}
-        aria-label={isOpen ? "Close chat" : "Open chat"}
-      >
-        {isMinimized ? <Plus size={24} /> : <MessageCircle size={24} />}
-      </button>
-      
-      <button
-        className="fixed z-40 bottom-6 left-6 h-14 w-14 rounded-full bg-legal-DEFAULT text-white shadow-lg hover:bg-legal-accent base-transition flex items-center justify-center"
-        onClick={() => document.getElementById('faq-section')?.scrollIntoView({ behavior: 'smooth' })}
-        aria-label="View FAQs"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-help-circle">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-          <path d="M12 17h.01"/>
-        </svg>
-      </button>
-      
-      <div 
-        className={cn(
-          "fixed z-50 bottom-24 right-6 w-full max-w-sm bg-white rounded-lg shadow-xl border border-legal-border overflow-hidden base-transition",
-          isOpen && !isMinimized ? "animate-fade-in" : "hidden"
-        )}
-      >
-        <div className="flex justify-between items-center p-4 bg-legal-DEFAULT text-white">
-          <h3 className="font-semibold">Law Suvidha Chat</h3>
-          <div className="flex items-center space-x-2">
-            <button 
-              className="hover:text-legal-light base-transition"
-              onClick={minimizeChat}
-              aria-label="Minimize chat"
+            ? "h-12 w-12 overflow-hidden p-0" 
+            : "h-[500px] w-[350px] md:w-[400px]"
+        )}>
+          {/* Chat header - Minimized state shows just the Plus button */}
+          {isMinimized ? (
+            <Button 
+              className="bg-[#403E43] text-white h-12 w-12 rounded-full p-0 flex items-center justify-center"
+              onClick={handleMinimize}
             >
-              <Minus size={20} />
-            </button>
-            <button 
-              className="hover:text-legal-light base-transition"
-              onClick={closeChat}
-              aria-label="Close chat"
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-        
-        <div className="p-4 h-80 overflow-y-auto bg-legal-light">
-          {chatHistory.map((message, idx) => (
-            <div
-              key={idx}
-              className={cn(
-                "mb-4 max-w-[80%] p-3 rounded-lg animate-fade-in",
-                message.role === 'bot' 
-                  ? "bg-white text-legal-DEFAULT mr-auto" 
-                  : "bg-legal-DEFAULT text-white ml-auto"
-              )}
-            >
-              {message.content}
+              <Plus size={20} className="text-white" />
+            </Button>
+          ) : (
+            <div className="bg-[#403E43] text-white p-4 rounded-t-lg flex justify-between items-center">
+              <div className="font-semibold">Law Suvidha Assistant</div>
+              <div className="flex space-x-2">
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-8 w-8 text-white hover:bg-white/10"
+                  onClick={handleMinimize}
+                >
+                  <div className="w-4 h-0.5 bg-white rounded"></div>
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-8 w-8 text-white hover:bg-white/10"
+                  onClick={handleClose}
+                >
+                  <X size={18} className="text-white" />
+                </Button>
+              </div>
             </div>
-          ))}
-          <div ref={chatEndRef} />
-        </div>
-        
-        <div className="p-4 border-t border-legal-border">
-          {chatHistory.length > 0 && (
-            renderInputForStep(
-              findStepById(
-                chatHistory[chatHistory.length - 1].id || currentStep
-              ) || INITIAL_STEPS[0]
-            )
+          )}
+
+          {/* Chat body */}
+          {!isMinimized && (
+            <>
+              <div className="p-4 h-[380px] overflow-y-auto">
+                {messages.map((message, index) => (
+                  <div key={index}>
+                    <div className={`mb-4 max-w-[80%] ${message.type === 'user' ? 'ml-auto' : 'mr-auto'}`}>
+                      <div className={`p-3 rounded-lg ${message.type === 'user' ? 'bg-[#403E43] text-white' : 'bg-gray-100 text-black'}`}>
+                        {message.text}
+                      </div>
+                    </div>
+                    {message.options && (
+                      <div className="mb-4 flex flex-wrap gap-2">
+                        {message.options.map((option) => (
+                          <Button
+                            key={option}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOptionSelect(option)}
+                            className="text-sm"
+                          >
+                            {option}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+              
+              {/* Chat input */}
+              <div className="p-4 border-t w-full">
+                <div className="flex items-center space-x-2 w-full">
+                  <Input
+                    type="text"
+                    placeholder="Type your message..."
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                    className="flex-1 min-w-0"
+                    disabled={messages.length > 0 && messages[messages.length - 1].options !== undefined}
+                  />
+                  <Button 
+                    className="bg-[#403E43] text-white shrink-0"
+                    onClick={handleSend}
+                    disabled={messages.length > 0 && messages[messages.length - 1].options !== undefined}
+                  >
+                    <Send size={18} />
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 };
 
